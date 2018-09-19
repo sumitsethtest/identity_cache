@@ -32,7 +32,10 @@ module IdentityCache
       results
     end
 
-    def fetch(key)
+    def fetch(key, unsupported_options = {})
+      unless unsupported_options.empty?
+        raise ArgumentError, "unsupported keywords: #{unsupported_options.keys.join(', ')}"
+      end
       result = @cache_backend.read(key)
       if result.nil?
         result = yield

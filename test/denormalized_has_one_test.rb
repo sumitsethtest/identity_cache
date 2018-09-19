@@ -24,12 +24,12 @@ class DenormalizedHasOneTest < IdentityCache::TestCase
     assert_equal(@record.associated, record_from_cache_miss.fetch_associated)
     assert(
       fetch.has_been_called_with?(
-        @record.attribute_cache_key_for_attribute_and_current_values(:id, [:title], true)
+        @record.attribute_cache_key_for_attribute_and_current_values(:id, [:title], true), {}
       )
     )
     assert(
       fetch.has_been_called_with?(
-        @record.primary_cache_index_key
+        @record.primary_cache_index_key, {}
       )
     )
   end
@@ -52,12 +52,12 @@ class DenormalizedHasOneTest < IdentityCache::TestCase
     end
     assert(
       fetch.has_been_called_with?(
-        @record.attribute_cache_key_for_attribute_and_current_values(:id, [:title], true)
+        @record.attribute_cache_key_for_attribute_and_current_values(:id, [:title], true), {}
       )
     )
     assert(
       fetch.has_been_called_with?(
-        @record.primary_cache_index_key
+        @record.primary_cache_index_key, {}
       )
     )
   end

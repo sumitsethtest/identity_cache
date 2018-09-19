@@ -17,9 +17,30 @@ module IdentityCache
         !!fetch_by_id(id)
       end
 
-      # Default fetcher added to the model on inclusion, it behaves like
-      # ActiveRecord::Base.where(id: id).first
-      def fetch_by_id(id, includes: nil)
+      # Fetch the record by its primary key from the cache or read from
+      # the database and fill the cache on a cache miss. This behaves like
+      # `where(id: id).readonly.first` being called on the model.
+      #
+      # @param id Primary key value for the record to fetch.
+      # @param includes [Hash|Array|Symbol] Cached associations to prefetch from
+      #   the cache on the returned record
+      # @param fill_lock_duration [Float] If provided, take a fill lock around cache fills
+      #   and wait for this duration for cache to be filled when reading a lock provided
+      #   by another client. Defaults to not setting the fill lock and trying to fill the
+      #   cache from the database regardless of the presence of another client's fill lock.
+      #   Set this to just above the typical amount of time it takes to do a cache fill.
+      # @param lock_wait_limit [Integer] Only applicable if fill_lock_duration is provided,
+      #   in which case it specifies the number of times to do a lock wait. After the first
+      #   lock wait it will try to take the lock, so will only do following lock waits due
+      #   to another client taking the lock first. If another lock wait would be needed after
+      #   reaching the limit, then a `LockWaitTimeout` exception is raised. Default is 2. Use
+      #   this to control the maximum total lock wait duration
+      #   (`lock_wait_limit * fill_lock_duration`).
+      # @raise [LockWaitTimeout] Timeout after waiting `lock_wait_limit * fill_lock_duration`
+      #   seconds for `lock_wait_limit` other clients to fill the cache.
+      # @return [self|nil] An instance of this model for the record with the specified id or
+      #   `nil` if no record with this `id` exists in the database
+      def fetch_by_id(id, includes: nil, **cache_fetcher_options)
         ensure_base_model
         raise_if_scoped
         raise NotImplementedError, "fetching needs the primary index enabled" unless primary_cache_index_enabled
@@ -27,7 +48,7 @@ module IdentityCache
         return unless id
         record = if should_use_cache?
           object = nil
-          coder  = IdentityCache.fetch(rails_cache_key(id)) do
+          coder  = IdentityCache.fetch(rails_cache_key(id), cache_fetcher_options) do
             Encoder.encode(object = resolve_cache_miss(id))
           end
           object ||= Encoder.decode(coder, self)
@@ -48,13 +69,17 @@ module IdentityCache
         record
       end
 
-      # Default fetcher added to the model on inclusion, it behaves like
-      # ActiveRecord::Base.find, will raise ActiveRecord::RecordNotFound exception
-      # if id is not in the cache or the db.
-      def fetch(id, includes: nil)
-        fetch_by_id(id, includes: includes) or raise(
-          ActiveRecord::RecordNotFound, "Couldn't find #{name} with ID=#{id}"
-        )
+      # Fetch the record by its primary key from the cache or read from
+      # the database and fill the cache on a cache miss. This behaves like
+      # `readonly.find(id)` being called on the model.
+      #
+      # @param (see #fetch_by_id)
+      # @raise (see #fetch_by_id)
+      # @raise [ActiveRecord::RecordNotFound] if the record isn't found
+      # @return [self] An instance of this model for the record with the specified id
+      def fetch(id, options = {})
+        fetch_by_id(id, options) or
+          raise(ActiveRecord::RecordNotFound, "Couldn't find #{name} with ID=#{id}")
       end
 
       # Default fetcher added to the model on inclusion, if behaves like
